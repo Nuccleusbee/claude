@@ -456,6 +456,12 @@ public final class BossManager implements Listener {
         plugin.data().save();
     }
 
+    /** Where this boss lives, or null if no spawn is set. */
+    public Location spawnOf(String id) {
+        State st = states.get(id.toLowerCase(Locale.ROOT));
+        return st == null ? null : st.spawn;
+    }
+
     public boolean kill(String id) {
         State st = states.get(id.toLowerCase(Locale.ROOT));
         if (st == null || st.entity == null || !st.entity.isValid()) return false;

@@ -48,6 +48,9 @@ public final class RelicCommand implements TabExecutor {
             case "givekey" -> giveKey(sender, args);
             case "setlevel" -> setLevel(sender, args);
             case "kit" -> kit(sender, args);
+            case "createworld" -> createWorld(sender, args);
+            case "buildspawn" -> buildSpawn(sender, args);
+            case "wasteland" -> wasteland(sender, args);
             default -> help(sender);
         }
         return true;
@@ -67,6 +70,9 @@ public final class RelicCommand implements TabExecutor {
                 "/relic givekey <player> <tier>",
                 "/relic setlevel <player> <level>",
                 "/relic kit [player]",
+                "/relic createworld [name] <gray>- new world: spawn, 4 mega biomes, wasteland",
+                "/relic buildspawn [radius] <gray>- build the spawn plaza at 0,0 of your world",
+                "/relic wasteland spawn <monster> <gray>- test a wasteland monster",
                 "/relic reload",
         };
         for (String line : lines) s.sendMessage(Text.mm("<yellow>" + line));
@@ -315,6 +321,50 @@ public final class RelicCommand implements TabExecutor {
         plugin.msg(s, "<green>Gave the starter kit to " + target.getName() + ".");
     }
 
+    // ------------------------------------------------------------------ world
+
+    private void createWorld(CommandSender s, String[] a) {
+        String name = a.length > 1 ? a[1] : "relic";
+        if (!name.matches("[A-Za-z0-9_-]+")) {
+            plugin.msg(s, "<red>World names can only use letters, numbers, _ and -.");
+            return;
+        }
+        plugin.msg(s, "<yellow>Creating world " + name + "... the server may freeze for a bit.");
+        org.bukkit.World world = plugin.createRelicWorld(name);
+        if (world == null) {
+            plugin.msg(s, "<red>Couldn't create the world. Check the console.");
+            return;
+        }
+        int radius = plugin.getConfig().getInt("spawn-plaza-radius", 28);
+        int floor = new dev.nuccleus.relicpvp.world.SpawnBuilder(plugin).build(world, radius);
+        plugin.msg(s, "<green>World <white>" + name + "</white> is ready with a spawn plaza at y=" + floor
+                + ". Players are now sent there on join and respawn.");
+        if (s instanceof Player p) p.teleport(world.getSpawnLocation());
+    }
+
+    private void buildSpawn(CommandSender s, String[] a) {
+        Player p = player(s);
+        if (p == null) return;
+        Integer radius = a.length > 1 ? integer(s, a[1]) : Integer.valueOf(plugin.getConfig().getInt("spawn-plaza-radius", 28));
+        if (radius == null) return;
+        if (radius < 12 || radius > 80) {
+            plugin.msg(s, "<red>Radius must be between 12 and 80.");
+            return;
+        }
+        int floor = new dev.nuccleus.relicpvp.world.SpawnBuilder(plugin).build(p.getWorld(), radius);
+        plugin.msg(s, "<green>Spawn plaza built at 0," + floor + ",0 with a safe 'spawn' zone. The 4 arches face N/E/S/W.");
+    }
+
+    private void wasteland(CommandSender s, String[] a) {
+        Player p = player(s);
+        if (p == null) return;
+        if (a.length < 3 || !a[1].equalsIgnoreCase("spawn")) {
+            plugin.msg(s, "<red>Usage: /relic wasteland spawn <monster>  <gray>(" + String.join(", ", plugin.wasteland().monsterIds()) + ")");
+            return;
+        }
+        plugin.msg(s, plugin.wasteland().spawnById(a[2], p.getLocation()) ? "<green>Spawned." : "<red>Unknown monster.");
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private Player player(CommandSender s) {
@@ -343,13 +393,14 @@ public final class RelicCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] a) {
         List<String> options = switch (a.length) {
-            case 1 -> List.of("gen", "zone", "boss", "rare", "give", "givekey", "setlevel", "kit", "reload");
+            case 1 -> List.of("gen", "zone", "boss", "rare", "give", "givekey", "setlevel", "kit", "createworld", "buildspawn", "wasteland", "reload");
             case 2 -> switch (a[0].toLowerCase(Locale.ROOT)) {
                 case "gen", "generator" -> List.of("create", "remove", "list");
                 case "zone" -> List.of("pos1", "pos2", "create", "setlevel", "setpvp", "setbuild", "remove", "list");
                 case "boss" -> List.of("setspawn", "clearspawn", "spawn", "kill", "list");
                 case "rare" -> List.of("addpoint", "removepoint", "clearpoints", "spawnnow", "list");
                 case "give", "givekey", "setlevel", "kit" -> onlineNames();
+                case "wasteland" -> List.of("spawn");
                 default -> List.of();
             };
             case 3 -> switch (a[0].toLowerCase(Locale.ROOT)) {
@@ -359,6 +410,7 @@ public final class RelicCommand implements TabExecutor {
                 case "zone" -> List.of("setlevel", "setpvp", "setbuild", "remove").contains(a[1].toLowerCase(Locale.ROOT))
                         ? plugin.zones().all().stream().map(Zone::id).toList() : List.of();
                 case "give" -> itemNames();
+                case "wasteland" -> plugin.wasteland().monsterIds();
                 default -> List.of();
             };
             case 4 -> a[0].equalsIgnoreCase("gen") && a[1].equalsIgnoreCase("create") ? itemNames() : List.of();

@@ -19,6 +19,10 @@ commands:
     usage: /generator help
     permission: relicpvp.admin
     aliases: [blockgen]
+  portal:
+    description: Create walk-through portals to spots, bosses or spawn.
+    usage: /portal help
+    permission: relicpvp.admin
 
 permissions:
   relicpvp.admin:

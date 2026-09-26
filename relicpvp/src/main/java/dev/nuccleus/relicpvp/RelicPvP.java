@@ -2,6 +2,7 @@ package dev.nuccleus.relicpvp;
 
 import dev.nuccleus.relicpvp.boss.BossManager;
 import dev.nuccleus.relicpvp.command.GeneratorCommand;
+import dev.nuccleus.relicpvp.command.PortalCommand;
 import dev.nuccleus.relicpvp.command.RelicCommand;
 import dev.nuccleus.relicpvp.command.StatsCommand;
 import dev.nuccleus.relicpvp.data.DataFile;
@@ -11,15 +12,22 @@ import dev.nuccleus.relicpvp.kit.KitManager;
 import dev.nuccleus.relicpvp.listener.KeyListener;
 import dev.nuccleus.relicpvp.listener.PlayerListener;
 import dev.nuccleus.relicpvp.mine.BlockGeneratorManager;
+import dev.nuccleus.relicpvp.portal.PortalManager;
 import dev.nuccleus.relicpvp.rare.RareSpawnManager;
 import dev.nuccleus.relicpvp.util.Items;
 import dev.nuccleus.relicpvp.util.Text;
+import dev.nuccleus.relicpvp.wasteland.WastelandManager;
+import dev.nuccleus.relicpvp.world.RelicChunkGenerator;
+import dev.nuccleus.relicpvp.world.WorldLayout;
 import dev.nuccleus.relicpvp.zone.ZoneListener;
 import dev.nuccleus.relicpvp.zone.ZoneManager;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
+import org.bukkit.WorldCreator;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabExecutor;
+import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class RelicPvP extends JavaPlugin {
@@ -36,6 +44,8 @@ public final class RelicPvP extends JavaPlugin {
     private BossManager bosses;
     private RareSpawnManager rares;
     private KitManager kits;
+    private PortalManager portals;
+    private WastelandManager wasteland;
     private String prefix = "";
 
     @Override
@@ -51,12 +61,16 @@ public final class RelicPvP extends JavaPlugin {
         bosses = new BossManager(this);
         rares = new RareSpawnManager(this);
         kits = new KitManager(this);
+        portals = new PortalManager(this);
+        wasteland = new WastelandManager(this);
 
+        loadCustomWorlds();
         reloadSettings();
         zones.loadData();
         generators.loadData();
         blockGenerators.loadData();
         rares.loadData();
+        portals.loadData();
 
         var pm = Bukkit.getPluginManager();
         pm.registerEvents(new ZoneListener(this), this);
@@ -66,14 +80,19 @@ public final class RelicPvP extends JavaPlugin {
         pm.registerEvents(bosses, this);
         pm.registerEvents(rares, this);
         pm.registerEvents(blockGenerators, this);
+        pm.registerEvents(portals, this);
+        pm.registerEvents(wasteland, this);
 
         bind("relic", new RelicCommand(this));
         bind("stats", new StatsCommand(this));
         bind("generator", new GeneratorCommand(this));
+        bind("portal", new PortalCommand(this));
 
         generators.start();
         bosses.start();
         rares.start();
+        portals.start();
+        wasteland.start();
 
         // Autosave player stats every 5 minutes.
         Bukkit.getScheduler().runTaskTimer(this, players::save, 6000L, 6000L);
@@ -84,6 +103,7 @@ public final class RelicPvP extends JavaPlugin {
         if (bosses != null) bosses.shutdown();
         if (rares != null) rares.shutdown();
         if (blockGenerators != null) blockGenerators.shutdown();
+        if (wasteland != null) wasteland.shutdown();
         if (players != null) players.save();
         if (data != null) data.save();
     }
@@ -96,6 +116,45 @@ public final class RelicPvP extends JavaPlugin {
         kits.loadConfig();
         bosses.loadConfig();
         rares.loadConfig();
+        wasteland.loadConfig();
+    }
+
+    /** Lets bukkit.yml use "generator: RelicPvP" for a world. */
+    @Override
+    public ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
+        return new RelicChunkGenerator(new WorldLayout(getConfig().getConfigurationSection("world-layout"), getLogger()));
+    }
+
+    /** Creates (or loads) a world that uses the RelicPvP layout and remembers it for next startup. */
+    public World createRelicWorld(String name) {
+        World world = new WorldCreator(name)
+                .generator(getDefaultWorldGenerator(name, null))
+                .createWorld();
+        if (world == null) return null;
+        int border = getConfig().getInt("world-layout.wasteland-radius", 2400);
+        world.getWorldBorder().setCenter(0, 0);
+        world.getWorldBorder().setSize(border * 2.0);
+        var list = data.yaml().getStringList("relic-worlds");
+        if (!list.contains(name)) list.add(name);
+        data.yaml().set("relic-worlds", list);
+        data.yaml().set("main-world", name);
+        data.save();
+        return world;
+    }
+
+    /** The world players are sent to on join/respawn, or null to leave vanilla behaviour alone. */
+    public World mainWorld() {
+        String name = data.yaml().getString("main-world");
+        return name == null || name.isEmpty() ? null : Bukkit.getWorld(name);
+    }
+
+    private void loadCustomWorlds() {
+        for (String name : data.yaml().getStringList("relic-worlds")) {
+            if (Bukkit.getWorld(name) == null) {
+                getLogger().info("Loading RelicPvP world " + name);
+                new WorldCreator(name).generator(getDefaultWorldGenerator(name, null)).createWorld();
+            }
+        }
     }
 
     private void bind(String name, TabExecutor executor) {
@@ -125,4 +184,6 @@ public final class RelicPvP extends JavaPlugin {
     public BossManager bosses() { return bosses; }
     public RareSpawnManager rares() { return rares; }
     public KitManager kits() { return kits; }
+    public PortalManager portals() { return portals; }
+    public WastelandManager wasteland() { return wasteland; }
 }

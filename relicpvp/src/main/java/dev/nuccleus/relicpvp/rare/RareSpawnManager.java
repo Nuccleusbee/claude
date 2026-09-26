@@ -30,7 +30,7 @@ import org.bukkit.util.Vector;
 /** Every so often a glowing rare item appears at a random spawn point and the server is told. */
 public final class RareSpawnManager implements Listener {
 
-    record Entry(String item, int amount, int weight, String announce) {}
+    public record Entry(String item, int amount, int weight, String announce) {}
     record Active(Item item, long expiresAt) {}
 
     private final RelicPvP plugin;
@@ -57,14 +57,20 @@ public final class RareSpawnManager implements Listener {
         maxActive = c.getInt("max-active", 3);
         minPlayers = c.getInt("min-players-online", 1);
         reveal = c.getString("reveal", "zone").toLowerCase(Locale.ROOT);
-        ConfigurationSection t = c.getConfigurationSection("table");
-        if (t == null) return;
+        table.addAll(parseTable(c.getConfigurationSection("table")));
+    }
+
+    /** Reads a loot table section: {key: {item, amount, weight, announce}}. */
+    public static List<Entry> parseTable(ConfigurationSection t) {
+        List<Entry> out = new ArrayList<>();
+        if (t == null) return out;
         for (String key : t.getKeys(false)) {
             ConfigurationSection e = t.getConfigurationSection(key);
             if (e == null) continue;
-            table.add(new Entry(e.getString("item", "DIAMOND"), e.getInt("amount", 1),
+            out.add(new Entry(e.getString("item", "DIAMOND"), e.getInt("amount", 1),
                     Math.max(1, e.getInt("weight", 1)), e.getString("announce", "<yellow>A rare item has appeared")));
         }
+        return out;
     }
 
     public void loadData() {
@@ -122,9 +128,16 @@ public final class RareSpawnManager implements Listener {
         }
         if (spot == null) return "every spawn point already has an item";
 
-        Entry entry = pick();
+        return spawnAt(spot, pick(table), true) ? null : "unknown item in the rare-spawns table";
+    }
+
+    /**
+     * Drops a glowing, tracked rare item from {@code entry} at {@code spot} and announces it.
+     * {@code serverWide} announces to everyone; otherwise only to players within 100 blocks.
+     */
+    public boolean spawnAt(Location spot, Entry entry, boolean serverWide) {
         ItemStack stack = plugin.items().create(entry.item(), entry.amount());
-        if (stack == null) return "unknown item '" + entry.item() + "'";
+        if (stack == null) return false;
 
         Item item = spot.getWorld().dropItem(spot, stack);
         item.setVelocity(new Vector());
@@ -133,14 +146,22 @@ public final class RareSpawnManager implements Listener {
         item.setPersistent(false);
         active.put(item.getUniqueId(), new Active(item, System.currentTimeMillis() + despawnSeconds * 1000L));
 
-        plugin.broadcast(entry.announce() + where(spot));
-        for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), "block.beacon.activate", 0.8f, 1.4f);
-        return null;
+        String message = entry.announce() + where(spot);
+        if (serverWide) {
+            plugin.broadcast(message);
+            for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), "block.beacon.activate", 0.8f, 1.4f);
+        } else {
+            for (Player p : spot.getWorld().getNearbyPlayers(spot, 100)) {
+                plugin.msg(p, message);
+                p.playSound(p.getLocation(), "block.beacon.activate", 0.8f, 1.4f);
+            }
+        }
+        return true;
     }
 
     private String where(Location l) {
         Zone zone = plugin.zones().zoneAt(l);
-        String zoneName = zone == null ? "the wilds" : zone.id();
+        String zoneName = zone != null ? zone.id() : plugin.wasteland().isWasteland(l) ? "the Wasteland" : "the wilds";
         return switch (reveal) {
             case "none" -> "<yellow>!";
             case "coords" -> " <yellow>at <white>" + LocUtil.pretty(l) + "<yellow>!";
@@ -149,7 +170,7 @@ public final class RareSpawnManager implements Listener {
         };
     }
 
-    private Entry pick() {
+    public static Entry pick(List<Entry> table) {
         int total = table.stream().mapToInt(Entry::weight).sum();
         int roll = ThreadLocalRandom.current().nextInt(total);
         for (Entry e : table) {

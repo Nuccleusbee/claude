@@ -7,7 +7,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.World;
 
 /** Kills, deaths and kill streaks. */
 public final class PlayerListener implements Listener {
@@ -37,6 +40,20 @@ public final class PlayerListener implements Listener {
         if (endedStreak >= 5) {
             plugin.broadcast("<yellow>" + killer.getName() + " ended " + victim.getName() + "'s " + endedStreak + " kill streak!");
         }
+    }
+
+    /** Players who aren't in the RelicPvP world get sent to its spawn. */
+    @EventHandler
+    public void onJoin(PlayerJoinEvent e) {
+        World main = plugin.mainWorld();
+        Player p = e.getPlayer();
+        if (main != null && p.getWorld() != main) p.teleport(main.getSpawnLocation());
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onRespawn(PlayerRespawnEvent e) {
+        World main = plugin.mainWorld();
+        if (main != null && !e.isBedSpawn() && !e.isAnchorSpawn()) e.setRespawnLocation(main.getSpawnLocation());
     }
 
     @EventHandler
