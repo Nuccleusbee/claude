@@ -1,0 +1,18 @@
+name: Generators
+version: '${version}'
+main: dev.nuccleus.generators.GeneratorsPlugin
+api-version: '1.21'
+description: Infinite mineable block generators and timed item generators.
+authors: [nuccleusbee]
+
+commands:
+  generator:
+    description: Create infinite generators.
+    usage: /generator help
+    permission: generators.admin
+    aliases: [gen]
+
+permissions:
+  generators.admin:
+    description: Use /generator.
+    default: op

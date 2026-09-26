@@ -1,0 +1,17 @@
+# Generators config. After editing, run /generator reload
+prefix: "<dark_gray>[<gold>Gen</gold>]</dark_gray> "
+
+# Block generators: blocks/areas you can mine forever.
+# Drops go straight into the miner's inventory, even in protected areas.
+block-generators:
+  # Seconds before a mined block comes back when you don't give one. 0 = it never breaks at all.
+  default-regen-seconds: 0
+  # What the block turns into while it's regenerating.
+  placeholder: BEDROCK
+
+# Drop generators: drop an item on top of a block on a timer.
+drop-generators:
+  # Only generate when a player is this close (stops item lag).
+  activation-range: 32
+  # Stop dropping when this many of the item are already lying there.
+  max-on-ground: 64
