@@ -31,15 +31,15 @@ public final class GeneratorCommand implements TabExecutor {
             giveWand(s);
             return true;
         }
-        // Plain "/generator" (or "/generator <seconds>") turns the wand selection into a generator.
-        if (a.length == 0 || (a.length == 1 && a[0].matches("\\d+"))) {
+        // Plain "/generator" turns the wand selection into the next numbered generator.
+        if (a.length == 0) {
             Player p = player(s);
             if (p == null) return true;
             if (!plugin.selection().complete(p.getUniqueId())) {
                 help(s);
                 return true;
             }
-            capture(p, plugin.blocks().nextId(), a.length == 1 ? Integer.parseInt(a[0]) : defaultRegen());
+            capture(p, plugin.blocks().nextId(), defaultRegen());
             return true;
         }
         String sub = a[0].toLowerCase(Locale.ROOT);
@@ -93,7 +93,7 @@ public final class GeneratorCommand implements TabExecutor {
             }
             case "setregen" -> {
                 if (a.length < 3) {
-                    plugin.msg(s, "<red>Usage: /generator setregen <id> <seconds>  <gray>(0 = never breaks)");
+                    plugin.msg(s, "<red>Usage: /generator setregen <id> <seconds>  <gray>(0 = instant)");
                     return true;
                 }
                 BlockGen g = findBlock(s, a[1]);
@@ -224,7 +224,7 @@ public final class GeneratorCommand implements TabExecutor {
             plugin.msg(p, "<red>There are no blocks in that selection. Place your ores first.");
             return;
         }
-        plugin.msg(p, "<green>Generator <white>" + g.id + "</white> made from " + g.size() + " blocks: <gray>" + g.contents()
+        plugin.msg(p, "<green>Generator <white>#" + g.id + "</white> made from " + g.size() + " blocks: <gray>" + g.contents()
                 + "<green>. " + capitalize(regenText(g)) + ". Anyone can mine it; items go straight to their inventory.");
     }
 
@@ -269,7 +269,7 @@ public final class GeneratorCommand implements TabExecutor {
     }
 
     private static String regenText(BlockGen g) {
-        return g.regenSeconds == 0 ? "never runs out" : "regenerates after " + g.regenSeconds + "s";
+        return g.regenSeconds == 0 ? "blocks come back instantly" : "blocks come back after " + g.regenSeconds + "s";
     }
 
     // ------------------------------------------------------------------ drop generators
@@ -329,15 +329,15 @@ public final class GeneratorCommand implements TabExecutor {
         String[] lines = {
                 "<gray>Build your ores, then:",
                 "/generatorwand <gray>- left-click corner 1, right-click corner 2",
-                "/generator [regen-seconds] <gray>- turn the selected blocks into a generator",
-                "/generator create <id> [regen-seconds] <gray>- same, with a name",
+                "/generator <gray>- turn the selected blocks into generator #1, #2, #3...",
+                "/generator create <name> <gray>- same, with a name instead of a number",
                 "<gray>Or place blocks for you:",
                 "<gray>Mine forever; items go straight to your inventory, even in protected areas:",
                 "/generator create <id> <block> [size] [regen-seconds] <gray>- on the block you look at",
                 "<gray>  size: 1x1 (default), 3x3, 5x5, 5x3x5 (width x depth-down x length)",
                 "/generator area <id> <block> [regen-seconds] <gray>- fill the selection with one block",
                 "/generator setdrop <id> <item|natural> [amount]",
-                "/generator setregen <id> <seconds> <gray>- 0 = block never breaks",
+                "/generator setregen <id> <seconds> <gray>- optional delay (0 = instant, the default)",
                 "/generator setblock <id> <block> | reset <id> | remove <id>",
                 "<gray>Drop items on a timer:",
                 "/generator drop create <id> <item> [amount] [seconds] <gray>- on the block you look at",

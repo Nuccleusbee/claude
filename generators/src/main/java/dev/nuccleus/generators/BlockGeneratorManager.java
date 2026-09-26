@@ -223,11 +223,17 @@ public final class BlockGeneratorManager implements Listener {
         return g;
     }
 
-    /** A free id like gen1, gen2... */
+    /** The next generator number: 1, 2, 3... (one higher than the biggest number used so far). */
     public String nextId() {
-        int i = 1;
-        while (gens.containsKey("gen" + i)) i++;
-        return "gen" + i;
+        int max = 0;
+        for (String id : gens.keySet()) {
+            try {
+                max = Math.max(max, Integer.parseInt(id));
+            } catch (NumberFormatException ignored) {
+                // named generator
+            }
+        }
+        return String.valueOf(max + 1);
     }
 
     public boolean remove(String id) {

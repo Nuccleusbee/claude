@@ -13,10 +13,12 @@ the break before protection plugins see it.
 /generatorwand                                gives you the wand
   left-click a block                          corner 1
   right-click a block                         corner 2
-/generator                                    turns every block in the selection into a generator (gen1, gen2...)
-/generator 10                                 same, but mined blocks turn to bedrock and come back after 10s
-/generator create diamondmine 5               same, with your own name
+/generator                                    turns every block in the selection into generator #1, #2, #3...
 ```
+Mined blocks come back instantly and the drops land in the miner's inventory.
+`/generator remove 2`, `/generator setregen 2 10` etc. use that number. Want a name instead of a number?
+`/generator create diamondmine`. Want a delay? `/generator setregen 2 10` makes mined blocks turn to bedrock
+and come back after 10s.
 Air in the selection is ignored, so the selection can be bigger than your build.
 
 You can also have the plugin place the blocks for you: Fortune and Silk Touch work, you get the XP, and
