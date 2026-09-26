@@ -127,13 +127,29 @@ public final class GeneratorCommand implements TabExecutor {
         Player p = player(s);
         if (p == null) return;
         if (a.length < 3) {
-            plugin.msg(s, "<red>Usage: /generator " + (area ? "area" : "create") + " <id> <block> [regen-seconds]");
+            plugin.msg(s, "<red>Usage: /generator " + (area ? "area <id> <block> [regen-seconds]" : "create <id> <block> [size] [regen-seconds]")
+                    + "  <gray>(size like 3x3, 5x5 or 5x3x5 = width x depth-down x length)");
             return;
         }
         Material block = block(s, a[2]);
         if (block == null) return;
-        Integer regen = a.length > 3 ? integer(s, a[3]) : Integer.valueOf(plugin.getConfig().getInt("block-generators.default-regen-seconds", 0));
-        if (regen == null) return;
+
+        // Optional extras in any order: a size like 3x3 / 5x2x5, and a regen time in seconds.
+        int[] dims = {1, 1, 1};
+        Integer regen = plugin.getConfig().getInt("block-generators.default-regen-seconds", 0);
+        for (int i = 3; i < a.length; i++) {
+            if (a[i].toLowerCase(Locale.ROOT).contains("x")) {
+                if (area) {
+                    plugin.msg(s, "<red>Area generators use pos1/pos2 for their size; use /generator create for a size.");
+                    return;
+                }
+                dims = size(s, a[i]);
+                if (dims == null) return;
+            } else {
+                regen = integer(s, a[i]);
+                if (regen == null) return;
+            }
+        }
 
         Block from;
         Block to;
@@ -144,22 +160,57 @@ public final class GeneratorCommand implements TabExecutor {
                 plugin.msg(s, "<red>Look at a corner and run /generator pos1, then the other corner and /generator pos2.");
                 return;
             }
-            long size = (long) (Math.abs(from.getX() - to.getX()) + 1) * (Math.abs(from.getY() - to.getY()) + 1) * (Math.abs(from.getZ() - to.getZ()) + 1);
-            if (size > BlockGeneratorManager.MAX_BLOCKS) {
-                plugin.msg(s, "<red>That's " + size + " blocks; the limit is " + BlockGeneratorManager.MAX_BLOCKS + ".");
-                return;
-            }
         } else {
-            from = p.getTargetBlockExact(8);
-            if (from == null) {
+            Block target = p.getTargetBlockExact(8);
+            if (target == null) {
                 plugin.msg(s, "<red>Look at the block you want to turn into a generator.");
                 return;
             }
-            to = from;
+            // Centred on the block you look at; its top layer is that block and it extends downwards.
+            int w = dims[0];
+            int h = dims[1];
+            int l = dims[2];
+            from = target.getRelative(-(w - 1) / 2, -(h - 1), -(l - 1) / 2);
+            to = target.getRelative(w / 2, 0, l / 2);
+        }
+        long size = (long) (Math.abs(from.getX() - to.getX()) + 1) * (Math.abs(from.getY() - to.getY()) + 1) * (Math.abs(from.getZ() - to.getZ()) + 1);
+        if (size > BlockGeneratorManager.MAX_BLOCKS) {
+            plugin.msg(s, "<red>That's " + size + " blocks; the limit is " + BlockGeneratorManager.MAX_BLOCKS + ".");
+            return;
+        }
+        if (from.getY() < from.getWorld().getMinHeight()) {
+            plugin.msg(s, "<red>That goes below the bottom of the world.");
+            return;
         }
         BlockGen g = plugin.blocks().create(a[1], from, to, block, regen);
-        plugin.msg(s, "<green>Generator <white>" + g.id + "</white>: " + g.size() + " block(s) of "
+        String shape = (g.maxX - g.minX + 1) + "x" + (g.maxY - g.minY + 1) + "x" + (g.maxZ - g.minZ + 1);
+        plugin.msg(s, "<green>Generator <white>" + g.id + "</white>: " + shape + " (" + g.size() + " blocks) of "
                 + name(block) + ", " + regenText(g) + ". Mined items go straight to the inventory.");
+    }
+
+    /** Parses "3x3" (3 wide, 1 deep, 3 long) or "5x2x5" (width x depth-down x length). */
+    private int[] size(CommandSender s, String raw) {
+        String[] parts = raw.toLowerCase(Locale.ROOT).split("x");
+        try {
+            int[] dims;
+            if (parts.length == 2) {
+                dims = new int[] {Integer.parseInt(parts[0]), 1, Integer.parseInt(parts[1])};
+            } else if (parts.length == 3) {
+                dims = new int[] {Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2])};
+            } else {
+                throw new NumberFormatException();
+            }
+            for (int d : dims) {
+                if (d < 1 || d > 100) {
+                    plugin.msg(s, "<red>Each side must be between 1 and 100.");
+                    return null;
+                }
+            }
+            return dims;
+        } catch (NumberFormatException e) {
+            plugin.msg(s, "<red>Size should look like 3x3, 5x5 or 5x3x5 (width x depth x length).");
+            return null;
+        }
     }
 
     private static String regenText(BlockGen g) {
@@ -222,7 +273,8 @@ public final class GeneratorCommand implements TabExecutor {
         plugin.msg(s, "<gold><bold>Generators");
         String[] lines = {
                 "<gray>Mine forever; items go straight to your inventory, even in protected areas:",
-                "/generator create <id> <block> [regen-seconds] <gray>- the block you're looking at",
+                "/generator create <id> <block> [size] [regen-seconds] <gray>- on the block you look at",
+                "<gray>  size: 1x1 (default), 3x3, 5x5, 5x3x5 (width x depth-down x length)",
                 "/generator pos1 | pos2 <gray>- look at two corners, then:",
                 "/generator area <id> <block> [regen-seconds] <gray>- a whole mine",
                 "/generator setdrop <id> <item|natural> [amount]",
@@ -297,7 +349,8 @@ public final class GeneratorCommand implements TabExecutor {
                 case "drop", "dropper" -> a[1].equalsIgnoreCase("remove") ? plugin.drops().all().stream().map(g -> g.id).toList() : List.of();
                 default -> List.of();
             };
-            case 4 -> (first.equals("drop") || first.equals("dropper")) && a[1].equalsIgnoreCase("create") ? materials(false) : List.of();
+            case 4 -> first.equals("create") ? List.of("1x1", "2x2", "3x3", "5x5", "7x7", "3x3x3", "5x3x5")
+                    : (first.equals("drop") || first.equals("dropper")) && a[1].equalsIgnoreCase("create") ? materials(false) : List.of();
             default -> List.of();
         };
         String prefix = a[a.length - 1].toLowerCase(Locale.ROOT);

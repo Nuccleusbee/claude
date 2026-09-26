@@ -11,7 +11,10 @@ tools lose durability. Explosions and pistons can't break or move generator bloc
 ```
 /generator create diamond1 diamond_ore        the block you're looking at, never runs out
 /generator create iron1 iron_ore 5            turns to bedrock for 5s after mining, then comes back
-/generator pos1 / pos2                        look at two corners of a mine
+/generator create gold1 gold_ore 3x3          a 3x3 pad centred on the block you look at
+/generator create coal1 coal_ore 5x5 10       5x5, each block regenerates after 10s
+/generator create emerald1 emerald_ore 5x3x5  5 wide, 3 deep (goes down), 5 long
+/generator pos1 / pos2                        or pick any shape: look at two corners of a mine
 /generator area coalmine coal_ore 10          fills the whole box with coal ore
 /generator setdrop diamond1 diamond 2         optional: give 2 diamonds instead of the normal drop
 /generator setdrop diamond1 natural           back to the normal drop
@@ -20,6 +23,10 @@ tools lose durability. Explosions and pistons can't break or move generator bloc
 /generator reset coalmine                     refill everything
 /generator remove iron1
 ```
+
+Sizes: `WxL` is a flat layer (`3x3`, `5x5`, `2x2`...) and `WxDxL` adds depth going down from the
+block you look at. Each side can be 1-100; a single generator can hold up to 50,000 blocks.
+Every block in a generator regenerates on its own.
 
 ## Drop generators: items on a timer
 ```
