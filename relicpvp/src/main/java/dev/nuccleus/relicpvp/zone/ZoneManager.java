@@ -15,7 +15,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Rectangular areas (full build height) that need a level to enter and can turn PvP off. */
 public final class ZoneManager {
 
-    public record Zone(String id, String world, int minX, int minZ, int maxX, int maxZ, int level, boolean pvp) {
+    public record Zone(String id, String world, int minX, int minZ, int maxX, int maxZ, int level, boolean pvp, boolean build) {
         public boolean contains(Location l) {
             World w = l.getWorld();
             if (w == null || !w.getName().equals(world)) return false;
@@ -43,7 +43,7 @@ public final class ZoneManager {
             if (z == null) continue;
             zones.put(id, new Zone(id, z.getString("world", "world"),
                     z.getInt("min-x"), z.getInt("min-z"), z.getInt("max-x"), z.getInt("max-z"),
-                    z.getInt("level"), z.getBoolean("pvp", true)));
+                    z.getInt("level"), z.getBoolean("pvp", true), z.getBoolean("build", true)));
         }
     }
 
@@ -57,25 +57,27 @@ public final class ZoneManager {
         yaml.set(p + "max-z", z.maxZ());
         yaml.set(p + "level", z.level());
         yaml.set(p + "pvp", z.pvp());
+        yaml.set(p + "build", z.build());
         plugin.data().save();
     }
 
-    public Zone create(String id, Location a, Location b, int level, boolean pvp) {
+    public Zone create(String id, Location a, Location b, int level, boolean pvp, boolean build) {
         id = id.toLowerCase(Locale.ROOT);
         Zone z = new Zone(id, a.getWorld().getName(),
                 Math.min(a.getBlockX(), b.getBlockX()), Math.min(a.getBlockZ(), b.getBlockZ()),
                 Math.max(a.getBlockX(), b.getBlockX()), Math.max(a.getBlockZ(), b.getBlockZ()),
-                level, pvp);
+                level, pvp, build);
         zones.put(id, z);
         persist(z);
         return z;
     }
 
-    public Zone update(String id, Integer level, Boolean pvp) {
+    public Zone update(String id, Integer level, Boolean pvp, Boolean build) {
         Zone old = zones.get(id.toLowerCase(Locale.ROOT));
         if (old == null) return null;
         Zone z = new Zone(old.id(), old.world(), old.minX(), old.minZ(), old.maxX(), old.maxZ(),
-                level != null ? level : old.level(), pvp != null ? pvp : old.pvp());
+                level != null ? level : old.level(), pvp != null ? pvp : old.pvp(),
+                build != null ? build : old.build());
         zones.put(z.id(), z);
         persist(z);
         return z;
@@ -106,6 +108,14 @@ public final class ZoneManager {
     public boolean pvpAllowed(Location l) {
         for (Zone z : zones.values()) {
             if (!z.pvp() && z.contains(l)) return false;
+        }
+        return true;
+    }
+
+    /** False if any zone covering this spot is a no-build zone. */
+    public boolean buildAllowed(Location l) {
+        for (Zone z : zones.values()) {
+            if (!z.build() && z.contains(l)) return false;
         }
         return true;
     }

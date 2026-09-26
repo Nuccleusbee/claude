@@ -59,8 +59,8 @@ public final class RelicCommand implements TabExecutor {
                 "/relic gen create <id> <item> [amount] [seconds] <gray>- generator on the block you look at",
                 "/relic gen remove <id> | list",
                 "/relic zone pos1 | pos2 <gray>- mark corners where you stand",
-                "/relic zone create <id> <level> [pvp true/false]",
-                "/relic zone setlevel <id> <level> | setpvp <id> <true/false> | remove <id> | list",
+                "/relic zone create <id> <level> [pvp true/false] [build true/false]",
+                "/relic zone setlevel <id> <level> | setpvp|setbuild <id> <true/false> | remove <id> | list",
                 "/relic boss setspawn <id> | clearspawn <id> | spawn <id> | kill <id> | list",
                 "/relic rare addpoint | removepoint | clearpoints | list | spawnnow",
                 "/relic give <player> <item> [amount]",
@@ -133,7 +133,7 @@ public final class RelicCommand implements TabExecutor {
                 Player p = player(s);
                 if (p == null) return;
                 if (a.length < 4) {
-                    plugin.msg(s, "<red>Usage: /relic zone create <id> <level> [pvp true/false]");
+                    plugin.msg(s, "<red>Usage: /relic zone create <id> <level> [pvp true/false] [build true/false]");
                     return;
                 }
                 Location p1 = plugin.zones().pos1(p.getUniqueId());
@@ -145,9 +145,10 @@ public final class RelicCommand implements TabExecutor {
                 Integer level = integer(s, a[3]);
                 if (level == null) return;
                 boolean pvp = a.length < 5 || Boolean.parseBoolean(a[4]);
-                Zone z = plugin.zones().create(a[2], p1, p2, level, pvp);
+                boolean build = a.length < 6 || Boolean.parseBoolean(a[5]);
+                Zone z = plugin.zones().create(a[2], p1, p2, level, pvp, build);
                 plugin.msg(s, "<green>Zone <white>" + z.id() + "</white> created: level " + z.level()
-                        + ", PvP " + (z.pvp() ? "on" : "off") + ", " + (z.maxX() - z.minX() + 1) + "x" + (z.maxZ() - z.minZ() + 1) + " blocks.");
+                        + ", PvP " + (z.pvp() ? "on" : "off") + ", building " + (z.build() ? "on" : "off") + ", " + (z.maxX() - z.minX() + 1) + "x" + (z.maxZ() - z.minZ() + 1) + " blocks.");
             }
             case "setlevel" -> {
                 if (a.length < 4) {
@@ -156,14 +157,21 @@ public final class RelicCommand implements TabExecutor {
                 }
                 Integer level = integer(s, a[3]);
                 if (level == null) return;
-                plugin.msg(s, plugin.zones().update(a[2], level, null) != null ? "<green>Updated." : "<red>No such zone.");
+                plugin.msg(s, plugin.zones().update(a[2], level, null, null) != null ? "<green>Updated." : "<red>No such zone.");
             }
             case "setpvp" -> {
                 if (a.length < 4) {
                     plugin.msg(s, "<red>Usage: /relic zone setpvp <id> <true/false>");
                     return;
                 }
-                plugin.msg(s, plugin.zones().update(a[2], null, Boolean.parseBoolean(a[3])) != null ? "<green>Updated." : "<red>No such zone.");
+                plugin.msg(s, plugin.zones().update(a[2], null, Boolean.parseBoolean(a[3]), null) != null ? "<green>Updated." : "<red>No such zone.");
+            }
+            case "setbuild" -> {
+                if (a.length < 4) {
+                    plugin.msg(s, "<red>Usage: /relic zone setbuild <id> <true/false>");
+                    return;
+                }
+                plugin.msg(s, plugin.zones().update(a[2], null, null, Boolean.parseBoolean(a[3])) != null ? "<green>Updated." : "<red>No such zone.");
             }
             case "remove", "delete" -> {
                 if (a.length < 3) {
@@ -175,7 +183,7 @@ public final class RelicCommand implements TabExecutor {
             default -> {
                 plugin.msg(s, "<gold>Zones (" + plugin.zones().all().size() + "):");
                 for (Zone z : plugin.zones().all()) {
-                    s.sendMessage(Text.mm("<white>" + z.id() + " <gray>level " + z.level() + ", PvP " + (z.pvp() ? "on" : "off")
+                    s.sendMessage(Text.mm("<white>" + z.id() + " <gray>level " + z.level() + ", PvP " + (z.pvp() ? "on" : "off") + ", build " + (z.build() ? "on" : "off")
                             + " @ " + z.world() + " " + z.minX() + "," + z.minZ() + " → " + z.maxX() + "," + z.maxZ()));
                 }
             }
@@ -338,7 +346,7 @@ public final class RelicCommand implements TabExecutor {
             case 1 -> List.of("gen", "zone", "boss", "rare", "give", "givekey", "setlevel", "kit", "reload");
             case 2 -> switch (a[0].toLowerCase(Locale.ROOT)) {
                 case "gen", "generator" -> List.of("create", "remove", "list");
-                case "zone" -> List.of("pos1", "pos2", "create", "setlevel", "setpvp", "remove", "list");
+                case "zone" -> List.of("pos1", "pos2", "create", "setlevel", "setpvp", "setbuild", "remove", "list");
                 case "boss" -> List.of("setspawn", "clearspawn", "spawn", "kill", "list");
                 case "rare" -> List.of("addpoint", "removepoint", "clearpoints", "spawnnow", "list");
                 case "give", "givekey", "setlevel", "kit" -> onlineNames();
@@ -348,7 +356,7 @@ public final class RelicCommand implements TabExecutor {
                 case "boss" -> new ArrayList<>(plugin.bosses().ids());
                 case "gen", "generator" -> a[1].equalsIgnoreCase("remove")
                         ? plugin.generators().all().stream().map(g -> g.id).toList() : List.of();
-                case "zone" -> List.of("setlevel", "setpvp", "remove").contains(a[1].toLowerCase(Locale.ROOT))
+                case "zone" -> List.of("setlevel", "setpvp", "setbuild", "remove").contains(a[1].toLowerCase(Locale.ROOT))
                         ? plugin.zones().all().stream().map(Zone::id).toList() : List.of();
                 case "give" -> itemNames();
                 default -> List.of();

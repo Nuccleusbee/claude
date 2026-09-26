@@ -1,6 +1,7 @@
 package dev.nuccleus.relicpvp;
 
 import dev.nuccleus.relicpvp.boss.BossManager;
+import dev.nuccleus.relicpvp.command.GeneratorCommand;
 import dev.nuccleus.relicpvp.command.RelicCommand;
 import dev.nuccleus.relicpvp.command.StatsCommand;
 import dev.nuccleus.relicpvp.data.DataFile;
@@ -9,6 +10,7 @@ import dev.nuccleus.relicpvp.generator.GeneratorManager;
 import dev.nuccleus.relicpvp.kit.KitManager;
 import dev.nuccleus.relicpvp.listener.KeyListener;
 import dev.nuccleus.relicpvp.listener.PlayerListener;
+import dev.nuccleus.relicpvp.mine.BlockGeneratorManager;
 import dev.nuccleus.relicpvp.rare.RareSpawnManager;
 import dev.nuccleus.relicpvp.util.Items;
 import dev.nuccleus.relicpvp.util.Text;
@@ -23,12 +25,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class RelicPvP extends JavaPlugin {
 
     public static final String BYPASS_ZONES = "relicpvp.bypass.zones";
+    public static final String BYPASS_BUILD = "relicpvp.bypass.build";
 
     private DataFile data;
     private PlayerDataStore players;
     private Items items;
     private ZoneManager zones;
     private GeneratorManager generators;
+    private BlockGeneratorManager blockGenerators;
     private BossManager bosses;
     private RareSpawnManager rares;
     private KitManager kits;
@@ -43,6 +47,7 @@ public final class RelicPvP extends JavaPlugin {
         items = new Items(this);
         zones = new ZoneManager(this);
         generators = new GeneratorManager(this);
+        blockGenerators = new BlockGeneratorManager(this);
         bosses = new BossManager(this);
         rares = new RareSpawnManager(this);
         kits = new KitManager(this);
@@ -50,6 +55,7 @@ public final class RelicPvP extends JavaPlugin {
         reloadSettings();
         zones.loadData();
         generators.loadData();
+        blockGenerators.loadData();
         rares.loadData();
 
         var pm = Bukkit.getPluginManager();
@@ -59,9 +65,11 @@ public final class RelicPvP extends JavaPlugin {
         pm.registerEvents(kits, this);
         pm.registerEvents(bosses, this);
         pm.registerEvents(rares, this);
+        pm.registerEvents(blockGenerators, this);
 
         bind("relic", new RelicCommand(this));
         bind("stats", new StatsCommand(this));
+        bind("generator", new GeneratorCommand(this));
 
         generators.start();
         bosses.start();
@@ -75,6 +83,7 @@ public final class RelicPvP extends JavaPlugin {
     public void onDisable() {
         if (bosses != null) bosses.shutdown();
         if (rares != null) rares.shutdown();
+        if (blockGenerators != null) blockGenerators.shutdown();
         if (players != null) players.save();
         if (data != null) data.save();
     }
@@ -112,6 +121,7 @@ public final class RelicPvP extends JavaPlugin {
     public Items items() { return items; }
     public ZoneManager zones() { return zones; }
     public GeneratorManager generators() { return generators; }
+    public BlockGeneratorManager blockGenerators() { return blockGenerators; }
     public BossManager bosses() { return bosses; }
     public RareSpawnManager rares() { return rares; }
     public KitManager kits() { return kits; }

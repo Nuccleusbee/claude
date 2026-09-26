@@ -89,6 +89,17 @@ generators:
   max-on-ground: 64
 
 # ------------------------------------------------------------
+# Block generators (create them in-game with /generator)
+# Mine them forever; drops go straight into your inventory,
+# even inside no-build zones like spawn.
+# ------------------------------------------------------------
+block-generators:
+  # Seconds before a mined block comes back. 0 = it never breaks at all.
+  default-regen-seconds: 0
+  # What the block turns into while it's regenerating.
+  placeholder: BEDROCK
+
+# ------------------------------------------------------------
 # Bosses. Set where they live with /relic boss setspawn <id>.
 # They spawn when a player comes near and respawn after dying.
 # ------------------------------------------------------------

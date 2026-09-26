@@ -14,10 +14,18 @@ commands:
     description: Show your level, kills and deaths.
     usage: /stats [player]
     aliases: [level]
+  generator:
+    description: Create infinite mineable block generators.
+    usage: /generator help
+    permission: relicpvp.admin
+    aliases: [blockgen]
 
 permissions:
   relicpvp.admin:
     description: Use /relic admin commands.
+    default: op
+  relicpvp.bypass.build:
+    description: Break and place blocks in no-build zones.
     default: op
   relicpvp.bypass.zones:
     description: Walk into level-locked zones without the level.
