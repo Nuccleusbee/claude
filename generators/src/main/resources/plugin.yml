@@ -11,6 +11,11 @@ commands:
     usage: /generator help
     permission: generators.admin
     aliases: [gen]
+  generatorwand:
+    description: Get the generator selection wand.
+    usage: /generatorwand
+    permission: generators.admin
+    aliases: [genwand]
 
 permissions:
   generators.admin:

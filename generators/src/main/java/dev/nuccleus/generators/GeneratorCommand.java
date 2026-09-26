@@ -2,10 +2,8 @@ package dev.nuccleus.generators;
 
 import dev.nuccleus.generators.BlockGeneratorManager.BlockGen;
 import dev.nuccleus.generators.DropGeneratorManager.DropGen;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -22,8 +20,6 @@ import org.bukkit.entity.Player;
 public final class GeneratorCommand implements TabExecutor {
 
     private final GeneratorsPlugin plugin;
-    private final Map<UUID, Block> pos1 = new HashMap<>();
-    private final Map<UUID, Block> pos2 = new HashMap<>();
 
     public GeneratorCommand(GeneratorsPlugin plugin) {
         this.plugin = plugin;
@@ -31,9 +27,38 @@ public final class GeneratorCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender s, Command command, String label, String[] a) {
-        String sub = a.length > 0 ? a[0].toLowerCase(Locale.ROOT) : "help";
+        if (command.getName().equalsIgnoreCase("generatorwand")) {
+            giveWand(s);
+            return true;
+        }
+        // Plain "/generator" (or "/generator <seconds>") turns the wand selection into a generator.
+        if (a.length == 0 || (a.length == 1 && a[0].matches("\\d+"))) {
+            Player p = player(s);
+            if (p == null) return true;
+            if (!plugin.selection().complete(p.getUniqueId())) {
+                help(s);
+                return true;
+            }
+            capture(p, plugin.blocks().nextId(), a.length == 1 ? Integer.parseInt(a[0]) : defaultRegen());
+            return true;
+        }
+        String sub = a[0].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "create" -> createBlock(s, a, false);
+            case "wand" -> giveWand(s);
+            case "create" -> {
+                // "/generator create <id> [seconds]" (no block) = use the wand selection as built.
+                if (a.length == 2 || (a.length == 3 && a[2].matches("\\d+"))) {
+                    Player p = player(s);
+                    if (p == null) return true;
+                    if (!plugin.selection().complete(p.getUniqueId())) {
+                        plugin.msg(s, "<red>Select an area with /generatorwand first, or give a block: /generator create <id> <block>");
+                        return true;
+                    }
+                    capture(p, a[1], a.length == 3 ? Integer.parseInt(a[2]) : defaultRegen());
+                } else {
+                    createBlock(s, a, false);
+                }
+            }
             case "area" -> createBlock(s, a, true);
             case "pos1", "pos2" -> {
                 Player p = player(s);
@@ -43,7 +68,7 @@ public final class GeneratorCommand implements TabExecutor {
                     plugin.msg(s, "<red>Look at a block first.");
                     return true;
                 }
-                (sub.equals("pos1") ? pos1 : pos2).put(p.getUniqueId(), target);
+                plugin.selection().set(p.getUniqueId(), sub.equals("pos1"), target);
                 plugin.msg(s, "<green>" + sub + " set to " + target.getX() + ", " + target.getY() + ", " + target.getZ() + ".");
             }
             case "setdrop" -> {
@@ -86,9 +111,7 @@ public final class GeneratorCommand implements TabExecutor {
                 BlockGen g = findBlock(s, a[1]);
                 Material block = block(s, a[2]);
                 if (g == null || block == null) return true;
-                g.block = block;
-                plugin.blocks().update(g);
-                plugin.blocks().fill(g);
+                plugin.blocks().setAll(g, block);
                 plugin.msg(s, "<green>" + g.id + " is now " + name(block) + ".");
             }
             case "reset" -> {
@@ -136,7 +159,7 @@ public final class GeneratorCommand implements TabExecutor {
 
         // Optional extras in any order: a size like 3x3 / 5x2x5, and a regen time in seconds.
         int[] dims = {1, 1, 1};
-        Integer regen = plugin.getConfig().getInt("block-generators.default-regen-seconds", 0);
+        Integer regen = defaultRegen();
         for (int i = 3; i < a.length; i++) {
             if (a[i].toLowerCase(Locale.ROOT).contains("x")) {
                 if (area) {
@@ -154,10 +177,10 @@ public final class GeneratorCommand implements TabExecutor {
         Block from;
         Block to;
         if (area) {
-            from = pos1.get(p.getUniqueId());
-            to = pos2.get(p.getUniqueId());
-            if (from == null || to == null || from.getWorld() != to.getWorld()) {
-                plugin.msg(s, "<red>Look at a corner and run /generator pos1, then the other corner and /generator pos2.");
+            from = plugin.selection().pos1(p.getUniqueId());
+            to = plugin.selection().pos2(p.getUniqueId());
+            if (!plugin.selection().complete(p.getUniqueId())) {
+                plugin.msg(s, "<red>Select two corners with /generatorwand (or /generator pos1 and pos2) first.");
                 return;
             }
         } else {
@@ -186,6 +209,38 @@ public final class GeneratorCommand implements TabExecutor {
         String shape = (g.maxX - g.minX + 1) + "x" + (g.maxY - g.minY + 1) + "x" + (g.maxZ - g.minZ + 1);
         plugin.msg(s, "<green>Generator <white>" + g.id + "</white>: " + shape + " (" + g.size() + " blocks) of "
                 + name(block) + ", " + regenText(g) + ". Mined items go straight to the inventory.");
+    }
+
+    /** Turns the player's wand selection into a generator, keeping every block exactly as built. */
+    private void capture(Player p, String id, int regen) {
+        UUID uuid = p.getUniqueId();
+        long volume = plugin.selection().volume(uuid);
+        if (volume > BlockGeneratorManager.MAX_BLOCKS) {
+            plugin.msg(p, "<red>That selection is " + volume + " blocks; the limit is " + BlockGeneratorManager.MAX_BLOCKS + ".");
+            return;
+        }
+        BlockGen g = plugin.blocks().capture(id, plugin.selection().pos1(uuid), plugin.selection().pos2(uuid), regen);
+        if (g == null) {
+            plugin.msg(p, "<red>There are no blocks in that selection. Place your ores first.");
+            return;
+        }
+        plugin.msg(p, "<green>Generator <white>" + g.id + "</white> made from " + g.size() + " blocks: <gray>" + g.contents()
+                + "<green>. " + capitalize(regenText(g)) + ". Anyone can mine it; items go straight to their inventory.");
+    }
+
+    private void giveWand(CommandSender s) {
+        Player p = player(s);
+        if (p == null) return;
+        p.getInventory().addItem(plugin.wand().createWand());
+        plugin.msg(p, "<green>Left-click a block for corner 1, right-click for corner 2, then run <yellow>/generator</yellow>.");
+    }
+
+    private int defaultRegen() {
+        return plugin.getConfig().getInt("block-generators.default-regen-seconds", 0);
+    }
+
+    private static String capitalize(String text) {
+        return text.isEmpty() ? text : Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     /** Parses "3x3" (3 wide, 1 deep, 3 long) or "5x2x5" (width x depth-down x length). */
@@ -257,8 +312,8 @@ public final class GeneratorCommand implements TabExecutor {
     private void list(CommandSender s) {
         plugin.msg(s, "<gold>Block generators (" + plugin.blocks().all().size() + "):");
         for (BlockGen g : plugin.blocks().all()) {
-            s.sendMessage(MiniMessage.miniMessage().deserialize("<white>" + g.id + " <gray>" + name(g.block)
-                    + " x" + g.size() + ", " + regenText(g)
+            s.sendMessage(MiniMessage.miniMessage().deserialize("<white>" + g.id + " <gray>" + g.contents()
+                    + ", " + regenText(g)
                     + (g.drop != null ? ", drops " + g.dropAmount + "x " + name(g.drop) : "")
                     + " @ " + g.world + " " + g.minX + "," + g.minY + "," + g.minZ));
         }
@@ -272,11 +327,15 @@ public final class GeneratorCommand implements TabExecutor {
     private void help(CommandSender s) {
         plugin.msg(s, "<gold><bold>Generators");
         String[] lines = {
+                "<gray>Build your ores, then:",
+                "/generatorwand <gray>- left-click corner 1, right-click corner 2",
+                "/generator [regen-seconds] <gray>- turn the selected blocks into a generator",
+                "/generator create <id> [regen-seconds] <gray>- same, with a name",
+                "<gray>Or place blocks for you:",
                 "<gray>Mine forever; items go straight to your inventory, even in protected areas:",
                 "/generator create <id> <block> [size] [regen-seconds] <gray>- on the block you look at",
                 "<gray>  size: 1x1 (default), 3x3, 5x5, 5x3x5 (width x depth-down x length)",
-                "/generator pos1 | pos2 <gray>- look at two corners, then:",
-                "/generator area <id> <block> [regen-seconds] <gray>- a whole mine",
+                "/generator area <id> <block> [regen-seconds] <gray>- fill the selection with one block",
                 "/generator setdrop <id> <item|natural> [amount]",
                 "/generator setregen <id> <seconds> <gray>- 0 = block never breaks",
                 "/generator setblock <id> <block> | reset <id> | remove <id>",
@@ -337,7 +396,7 @@ public final class GeneratorCommand implements TabExecutor {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] a) {
         String first = a[0].toLowerCase(Locale.ROOT);
         List<String> options = switch (a.length) {
-            case 1 -> List.of("create", "area", "pos1", "pos2", "setdrop", "setregen", "setblock", "reset", "remove", "drop", "list", "reload");
+            case 1 -> List.of("wand", "create", "area", "pos1", "pos2", "setdrop", "setregen", "setblock", "reset", "remove", "drop", "list", "reload");
             case 2 -> switch (first) {
                 case "setdrop", "setregen", "setblock", "reset", "remove", "delete" -> plugin.blocks().all().stream().map(g -> g.id).toList();
                 case "drop", "dropper" -> List.of("create", "remove", "list");

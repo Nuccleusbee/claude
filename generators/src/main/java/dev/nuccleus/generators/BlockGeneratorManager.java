@@ -7,6 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -14,6 +17,7 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -27,12 +31,12 @@ import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
 
 /**
- * Infinite block generators: blocks (or whole areas) that can be mined forever. Whatever they drop goes
- * straight into the miner's inventory, and they work inside protected areas because the break is handled
- * here, at the lowest priority, before any protection plugin sees it.
+ * Infinite block generators: blocks that can be mined forever. Each block remembers exactly what it was
+ * (so a hand-built mix of ores keeps its layout). Whatever they drop goes straight into the miner's
+ * inventory (anything that doesn't fit is deleted), and they work inside protected areas because the
+ * break is handled here, at the lowest priority, before any protection plugin sees it.
  */
 public final class BlockGeneratorManager implements Listener {
 
@@ -40,14 +44,15 @@ public final class BlockGeneratorManager implements Listener {
         public final String id;
         public final String world;
         public final int minX, minY, minZ, maxX, maxY, maxZ;
-        public Material block;
+        /** Packed position -> what the block should be. */
+        final Map<Long, BlockData> blocks;
         public int regenSeconds;
         /** Item to give instead of the block's natural drops, or null for natural drops. */
         public Material drop;
         public int dropAmount;
 
         BlockGen(String id, String world, int minX, int minY, int minZ, int maxX, int maxY, int maxZ,
-                 Material block, int regenSeconds, Material drop, int dropAmount) {
+                 Map<Long, BlockData> blocks, int regenSeconds, Material drop, int dropAmount) {
             this.id = id;
             this.world = world;
             this.minX = minX;
@@ -56,35 +61,55 @@ public final class BlockGeneratorManager implements Listener {
             this.maxX = maxX;
             this.maxY = maxY;
             this.maxZ = maxZ;
-            this.block = block;
+            this.blocks = blocks;
             this.regenSeconds = regenSeconds;
             this.drop = drop;
             this.dropAmount = dropAmount;
         }
 
-        boolean contains(Block b) {
-            return b.getWorld().getName().equals(world)
-                    && b.getX() >= minX && b.getX() <= maxX
-                    && b.getY() >= minY && b.getY() <= maxY
-                    && b.getZ() >= minZ && b.getZ() <= maxZ;
+        BlockData dataAt(Block b) {
+            if (!b.getWorld().getName().equals(world)
+                    || b.getX() < minX || b.getX() > maxX
+                    || b.getY() < minY || b.getY() > maxY
+                    || b.getZ() < minZ || b.getZ() > maxZ) return null;
+            return blocks.get(pack(b.getX(), b.getY(), b.getZ()));
         }
 
-        public long size() {
-            return (long) (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        public int size() {
+            return blocks.size();
+        }
+
+        /** e.g. "12 diamond_ore, 30 iron_ore". */
+        public String contents() {
+            Map<String, Integer> counts = new TreeMap<>();
+            for (BlockData d : blocks.values()) counts.merge(d.getMaterial().name().toLowerCase(Locale.ROOT), 1, Integer::sum);
+            StringBuilder sb = new StringBuilder();
+            counts.forEach((name, n) -> {
+                if (!sb.isEmpty()) sb.append(", ");
+                sb.append(n).append(' ').append(name);
+            });
+            return sb.toString();
         }
     }
 
-    /** Hard cap so a typo can't freeze the server filling millions of blocks. */
+    /** Hard cap so a typo can't freeze the server with millions of blocks. */
     public static final long MAX_BLOCKS = 50_000;
 
     private final GeneratorsPlugin plugin;
     private final Map<String, BlockGen> gens = new LinkedHashMap<>();
     /** Blocks currently showing the placeholder, waiting to regenerate. */
-    private final Map<Location, Material> regenerating = new HashMap<>();
+    private final Map<Location, BlockData> regenerating = new HashMap<>();
+    private final Map<UUID, Long> fullWarned = new HashMap<>();
 
     public BlockGeneratorManager(GeneratorsPlugin plugin) {
         this.plugin = plugin;
     }
+
+    static long pack(int x, int y, int z) {
+        return ((long) x & 0x3FFFFFF) << 38 | ((long) z & 0x3FFFFFF) << 12 | (y & 0xFFF);
+    }
+
+    // ------------------------------------------------------------------ saving / loading
 
     public void loadData() {
         gens.clear();
@@ -93,12 +118,31 @@ public final class BlockGeneratorManager implements Listener {
         for (String id : section.getKeys(false)) {
             ConfigurationSection c = section.getConfigurationSection(id);
             if (c == null) continue;
-            Material block = Material.matchMaterial(c.getString("block", "STONE"));
-            if (block == null || !block.isBlock()) block = Material.STONE;
-            gens.put(id, new BlockGen(id, c.getString("world", "world"),
-                    c.getInt("min-x"), c.getInt("min-y"), c.getInt("min-z"),
-                    c.getInt("max-x"), c.getInt("max-y"), c.getInt("max-z"),
-                    block, c.getInt("regen-seconds"), dropMaterial(c.getString("drop")), c.getInt("drop-amount", 1)));
+            int minX = c.getInt("min-x"), minY = c.getInt("min-y"), minZ = c.getInt("min-z");
+            int maxX = c.getInt("max-x"), maxY = c.getInt("max-y"), maxZ = c.getInt("max-z");
+            Map<Long, BlockData> blocks = new HashMap<>();
+            if (c.isList("blocks")) {
+                for (String line : c.getStringList("blocks")) {
+                    int bar = line.indexOf('|');
+                    if (bar < 0) continue;
+                    String[] pos = line.substring(0, bar).split(" ");
+                    try {
+                        BlockData data = Bukkit.createBlockData(line.substring(bar + 1));
+                        blocks.put(pack(Integer.parseInt(pos[0]), Integer.parseInt(pos[1]), Integer.parseInt(pos[2])), data);
+                    } catch (IllegalArgumentException | ArrayIndexOutOfBoundsException e) {
+                        plugin.getLogger().warning("Generator '" + id + "' has a bad block entry: " + line);
+                    }
+                }
+            } else {
+                // Older single-block-type format.
+                Material type = Material.matchMaterial(c.getString("block", "STONE"));
+                BlockData data = (type == null || !type.isBlock() ? Material.STONE : type).createBlockData();
+                for (int x = minX; x <= maxX; x++)
+                    for (int y = minY; y <= maxY; y++)
+                        for (int z = minZ; z <= maxZ; z++) blocks.put(pack(x, y, z), data);
+            }
+            gens.put(id, new BlockGen(id, c.getString("world", "world"), minX, minY, minZ, maxX, maxY, maxZ,
+                    blocks, c.getInt("regen-seconds"), dropMaterial(c.getString("drop")), c.getInt("drop-amount", 1)));
         }
     }
 
@@ -111,6 +155,7 @@ public final class BlockGeneratorManager implements Listener {
     private void persist(BlockGen g) {
         YamlConfiguration yaml = plugin.data().yaml();
         String p = "block-generators." + g.id + ".";
+        yaml.set("block-generators." + g.id, null);
         yaml.set(p + "world", g.world);
         yaml.set(p + "min-x", g.minX);
         yaml.set(p + "min-y", g.minY);
@@ -118,27 +163,71 @@ public final class BlockGeneratorManager implements Listener {
         yaml.set(p + "max-x", g.maxX);
         yaml.set(p + "max-y", g.maxY);
         yaml.set(p + "max-z", g.maxZ);
-        yaml.set(p + "block", g.block.name());
         yaml.set(p + "regen-seconds", g.regenSeconds);
         yaml.set(p + "drop", g.drop == null ? null : g.drop.name());
         yaml.set(p + "drop-amount", g.dropAmount);
+        List<String> lines = new ArrayList<>(g.blocks.size());
+        for (int x = g.minX; x <= g.maxX; x++)
+            for (int y = g.minY; y <= g.maxY; y++)
+                for (int z = g.minZ; z <= g.maxZ; z++) {
+                    BlockData d = g.blocks.get(pack(x, y, z));
+                    if (d != null) lines.add(x + " " + y + " " + z + "|" + d.getAsString());
+                }
+        yaml.set(p + "blocks", lines);
         plugin.data().save();
     }
 
     // ------------------------------------------------------------------ admin API
 
-    /** Creates a generator covering the box between a and b and fills it with {@code block}. */
-    public BlockGen create(String id, Block a, Block b, Material block, int regenSeconds) {
-        id = id.toLowerCase(Locale.ROOT);
-        remove(id);
-        BlockGen g = new BlockGen(id, a.getWorld().getName(),
+    private static int[] bounds(Block a, Block b) {
+        return new int[] {
                 Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()),
                 Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), Math.max(a.getZ(), b.getZ()),
-                block, Math.max(0, regenSeconds), null, 1);
-        gens.put(id, g);
-        persist(g);
+        };
+    }
+
+    /** Turns every non-air block between a and b into a generator, keeping each block as it is. Null if all air. */
+    public BlockGen capture(String id, Block a, Block b, int regenSeconds) {
+        int[] r = bounds(a, b);
+        World w = a.getWorld();
+        Map<Long, BlockData> blocks = new HashMap<>();
+        for (int x = r[0]; x <= r[3]; x++)
+            for (int y = r[1]; y <= r[4]; y++)
+                for (int z = r[2]; z <= r[5]; z++) {
+                    Block block = w.getBlockAt(x, y, z);
+                    if (!block.getType().isAir()) blocks.put(pack(x, y, z), block.getBlockData());
+                }
+        if (blocks.isEmpty()) return null;
+        return register(id, w, r, blocks, regenSeconds);
+    }
+
+    /** Creates a generator covering the box between a and b, filled with {@code type}. */
+    public BlockGen create(String id, Block a, Block b, Material type, int regenSeconds) {
+        int[] r = bounds(a, b);
+        BlockData data = type.createBlockData();
+        Map<Long, BlockData> blocks = new HashMap<>();
+        for (int x = r[0]; x <= r[3]; x++)
+            for (int y = r[1]; y <= r[4]; y++)
+                for (int z = r[2]; z <= r[5]; z++) blocks.put(pack(x, y, z), data);
+        BlockGen g = register(id, a.getWorld(), r, blocks, regenSeconds);
         fill(g);
         return g;
+    }
+
+    private BlockGen register(String id, World w, int[] r, Map<Long, BlockData> blocks, int regenSeconds) {
+        id = id.toLowerCase(Locale.ROOT);
+        remove(id);
+        BlockGen g = new BlockGen(id, w.getName(), r[0], r[1], r[2], r[3], r[4], r[5], blocks, Math.max(0, regenSeconds), null, 1);
+        gens.put(id, g);
+        persist(g);
+        return g;
+    }
+
+    /** A free id like gen1, gen2... */
+    public String nextId() {
+        int i = 1;
+        while (gens.containsKey("gen" + i)) i++;
+        return "gen" + i;
     }
 
     public boolean remove(String id) {
@@ -146,8 +235,8 @@ public final class BlockGeneratorManager implements Listener {
         if (g == null) return false;
         regenerating.entrySet().removeIf(e -> {
             Block b = e.getKey().getBlock();
-            if (!g.contains(b)) return false;
-            b.setType(e.getValue(), false);
+            if (g.dataAt(b) == null) return false;
+            b.setBlockData(e.getValue(), false);
             return true;
         });
         plugin.data().yaml().set("block-generators." + g.id, null);
@@ -163,19 +252,27 @@ public final class BlockGeneratorManager implements Listener {
         persist(g);
     }
 
-    /** Sets every block in the generator to its block type. */
+    /** Makes every block in the generator the same type. */
+    public void setAll(BlockGen g, Material type) {
+        BlockData data = type.createBlockData();
+        g.blocks.replaceAll((k, v) -> data);
+        persist(g);
+        fill(g);
+    }
+
+    /** Puts every block in the generator back to what it should be. */
     public void fill(BlockGen g) {
         World w = Bukkit.getWorld(g.world);
         if (w == null) return;
-        for (int x = g.minX; x <= g.maxX; x++) {
-            for (int y = g.minY; y <= g.maxY; y++) {
+        for (int x = g.minX; x <= g.maxX; x++)
+            for (int y = g.minY; y <= g.maxY; y++)
                 for (int z = g.minZ; z <= g.maxZ; z++) {
+                    BlockData d = g.blocks.get(pack(x, y, z));
+                    if (d == null) continue;
                     Block b = w.getBlockAt(x, y, z);
                     regenerating.remove(b.getLocation());
-                    b.setType(g.block, false);
+                    b.setBlockData(d, false);
                 }
-            }
-        }
     }
 
     public Collection<BlockGen> all() {
@@ -184,13 +281,21 @@ public final class BlockGeneratorManager implements Listener {
 
     /** Puts every regenerating block back right away (used on shutdown so nothing is left as bedrock). */
     public void shutdown() {
-        regenerating.forEach((loc, type) -> loc.getBlock().setType(type, false));
+        regenerating.forEach((loc, data) -> loc.getBlock().setBlockData(data, false));
         regenerating.clear();
+    }
+
+    private BlockData expected(Block b) {
+        for (BlockGen g : gens.values()) {
+            BlockData d = g.dataAt(b);
+            if (d != null) return d;
+        }
+        return null;
     }
 
     private BlockGen at(Block b) {
         for (BlockGen g : gens.values()) {
-            if (g.contains(b)) return g;
+            if (g.dataAt(b) != null) return g;
         }
         return null;
     }
@@ -202,6 +307,7 @@ public final class BlockGeneratorManager implements Listener {
         Block block = e.getBlock();
         BlockGen g = at(block);
         if (g == null) return;
+        BlockData should = g.dataAt(block);
 
         // We handle the break ourselves; cancelling means protection plugins and the world never see it.
         e.setCancelled(true);
@@ -213,9 +319,9 @@ public final class BlockGeneratorManager implements Listener {
             return;
         }
         if (p.getGameMode() == GameMode.SPECTATOR) return;
-        if (block.getType() != g.block) {
+        if (block.getType() != should.getMaterial()) {
             // Someone swapped the block (e.g. world edit); fix it and move on.
-            block.setType(g.block, false);
+            block.setBlockData(should, false);
             return;
         }
 
@@ -235,13 +341,14 @@ public final class BlockGeneratorManager implements Listener {
                 return;
             }
         }
-        if (!fits(p.getInventory(), drops)) {
-            plugin.msg(p, "<red>Your inventory is full!");
-            p.playSound(p.getLocation(), "block.note_block.bass", 1f, 0.5f);
-            return;
-        }
 
-        drops.forEach(d -> p.getInventory().addItem(d));
+        // Straight into the inventory; whatever doesn't fit is deleted.
+        boolean overflow = false;
+        for (ItemStack d : drops) {
+            if (!p.getInventory().addItem(d).isEmpty()) overflow = true;
+        }
+        if (overflow) warnFull(p);
+
         int exp = e.getExpToDrop();
         if (exp > 0) p.giveExp(exp);
         if (tool.getType().getMaxDurability() > 0) p.damageItemStack(EquipmentSlot.HAND, 1);
@@ -251,15 +358,23 @@ public final class BlockGeneratorManager implements Listener {
         p.playSound(center, "entity.item.pickup", 0.6f, 1.2f);
 
         if (g.regenSeconds > 0) {
-            Material placeholder = placeholder();
             Location key = block.getLocation();
-            regenerating.put(key, g.block);
-            block.setType(placeholder, false);
+            regenerating.put(key, should);
+            block.setType(placeholder(), false);
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                Material type = regenerating.remove(key);
-                if (type != null) key.getBlock().setType(type, false);
+                BlockData data = regenerating.remove(key);
+                if (data != null) key.getBlock().setBlockData(data, false);
             }, g.regenSeconds * 20L);
         }
+    }
+
+    private void warnFull(Player p) {
+        long now = System.currentTimeMillis();
+        Long last = fullWarned.get(p.getUniqueId());
+        if (last != null && now - last < 3000) return;
+        fullWarned.put(p.getUniqueId(), now);
+        p.sendActionBar(MiniMessage.miniMessage().deserialize("<red>Inventory full! Extra items were deleted."));
+        p.playSound(p.getLocation(), "block.note_block.bass", 0.7f, 0.5f);
     }
 
     private Material placeholder() {
@@ -267,52 +382,25 @@ public final class BlockGeneratorManager implements Listener {
         return m == null || !m.isBlock() ? Material.BEDROCK : m;
     }
 
-    private static boolean fits(PlayerInventory inv, List<ItemStack> items) {
-        // Check against a copy so a partial add never happens.
-        ItemStack[] copy = inv.getStorageContents().clone();
-        for (int i = 0; i < copy.length; i++) {
-            if (copy[i] != null) copy[i] = copy[i].clone();
-        }
-        for (ItemStack item : items) {
-            int left = item.getAmount();
-            for (int i = 0; i < copy.length && left > 0; i++) {
-                ItemStack slot = copy[i];
-                if (slot == null || slot.getType().isAir()) {
-                    int n = Math.min(left, item.getMaxStackSize());
-                    ItemStack placed = item.clone();
-                    placed.setAmount(n);
-                    copy[i] = placed;
-                    left -= n;
-                } else if (slot.isSimilar(item) && slot.getAmount() < slot.getMaxStackSize()) {
-                    int n = Math.min(left, slot.getMaxStackSize() - slot.getAmount());
-                    slot.setAmount(slot.getAmount() + n);
-                    left -= n;
-                }
-            }
-            if (left > 0) return false;
-        }
-        return true;
-    }
-
     // ------------------------------------------------------------------ keep generators intact
 
     @EventHandler(ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent e) {
-        e.blockList().removeIf(b -> at(b) != null);
+        e.blockList().removeIf(b -> expected(b) != null);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent e) {
-        e.blockList().removeIf(b -> at(b) != null);
+        e.blockList().removeIf(b -> expected(b) != null);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onPistonExtend(BlockPistonExtendEvent e) {
-        if (e.getBlocks().stream().anyMatch(b -> at(b) != null)) e.setCancelled(true);
+        if (e.getBlocks().stream().anyMatch(b -> expected(b) != null)) e.setCancelled(true);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onPistonRetract(BlockPistonRetractEvent e) {
-        if (e.getBlocks().stream().anyMatch(b -> at(b) != null)) e.setCancelled(true);
+        if (e.getBlocks().stream().anyMatch(b -> expected(b) != null)) e.setCancelled(true);
     }
 }

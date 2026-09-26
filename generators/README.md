@@ -3,9 +3,23 @@
 Paper **1.21.x** plugin with two kinds of infinite generator, admin-only (`generators.admin`, ops by default).
 
 ## Block generators: mine forever
-Turn a block, or a whole area, into an infinite ore/block. Whatever you mine goes **straight into your
-inventory**, and it works **even in protected areas** like spawn (WorldGuard etc.), because the plugin
-handles the break before protection plugins see it. Fortune and Silk Touch work, you get the XP, and
+Build your ores however you like, select them with the wand, and run `/generator`. Every block you placed
+becomes infinite, and each one keeps its own type, so a hand-made mix of ores stays exactly as you built it.
+Whatever you mine goes **straight into your inventory**, and **anything that doesn't fit is deleted**.
+It works **anywhere, even in protected areas** like spawn (WorldGuard etc.), because the plugin handles
+the break before protection plugins see it.
+
+```
+/generatorwand                                gives you the wand
+  left-click a block                          corner 1
+  right-click a block                         corner 2
+/generator                                    turns every block in the selection into a generator (gen1, gen2...)
+/generator 10                                 same, but mined blocks turn to bedrock and come back after 10s
+/generator create diamondmine 5               same, with your own name
+```
+Air in the selection is ignored, so the selection can be bigger than your build.
+
+You can also have the plugin place the blocks for you: Fortune and Silk Touch work, you get the XP, and
 tools lose durability. Explosions and pistons can't break or move generator blocks.
 
 ```
@@ -14,12 +28,11 @@ tools lose durability. Explosions and pistons can't break or move generator bloc
 /generator create gold1 gold_ore 3x3          a 3x3 pad centred on the block you look at
 /generator create coal1 coal_ore 5x5 10       5x5, each block regenerates after 10s
 /generator create emerald1 emerald_ore 5x3x5  5 wide, 3 deep (goes down), 5 long
-/generator pos1 / pos2                        or pick any shape: look at two corners of a mine
-/generator area coalmine coal_ore 10          fills the whole box with coal ore
+/generator area coalmine coal_ore 10          fills the wand selection with coal ore
 /generator setdrop diamond1 diamond 2         optional: give 2 diamonds instead of the normal drop
 /generator setdrop diamond1 natural           back to the normal drop
 /generator setregen iron1 0                   never breaks
-/generator setblock iron1 gold_ore            change the block
+/generator setblock iron1 gold_ore            make every block in it gold ore
 /generator reset coalmine                     refill everything
 /generator remove iron1
 ```

@@ -3,6 +3,7 @@ prefix: "<dark_gray>[<gold>Gen</gold>]</dark_gray> "
 
 # Block generators: blocks/areas you can mine forever.
 # Drops go straight into the miner's inventory, even in protected areas.
+# If the inventory is full, whatever doesn't fit is deleted.
 block-generators:
   # Seconds before a mined block comes back when you don't give one. 0 = it never breaks at all.
   default-regen-seconds: 0

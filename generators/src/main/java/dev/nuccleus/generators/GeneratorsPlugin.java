@@ -13,6 +13,8 @@ public final class GeneratorsPlugin extends JavaPlugin {
     private DataFile data;
     private BlockGeneratorManager blocks;
     private DropGeneratorManager drops;
+    private final Selection selection = new Selection();
+    private WandListener wand;
 
     @Override
     public void onEnable() {
@@ -23,12 +25,15 @@ public final class GeneratorsPlugin extends JavaPlugin {
         blocks.loadData();
         drops.loadData();
 
+        wand = new WandListener(this);
+        Bukkit.getPluginManager().registerEvents(wand, this);
         Bukkit.getPluginManager().registerEvents(blocks, this);
         drops.start();
 
-        PluginCommand command = getCommand("generator");
-        if (command != null) {
-            GeneratorCommand executor = new GeneratorCommand(this);
+        GeneratorCommand executor = new GeneratorCommand(this);
+        for (String name : new String[] {"generator", "generatorwand"}) {
+            PluginCommand command = getCommand(name);
+            if (command == null) continue;
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         }
@@ -51,4 +56,6 @@ public final class GeneratorsPlugin extends JavaPlugin {
     public DataFile data() { return data; }
     public BlockGeneratorManager blocks() { return blocks; }
     public DropGeneratorManager drops() { return drops; }
+    public Selection selection() { return selection; }
+    public WandListener wand() { return wand; }
 }
