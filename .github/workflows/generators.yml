@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: generators
@@ -25,3 +27,16 @@ jobs:
         with:
           name: Generators-jar
           path: generators/build/libs/*.jar
+      # Keep the latest jar on its own branch so it has a stable download link:
+      # https://github.com/<owner>/<repo>/raw/generators-build/Generators.jar
+      - name: Publish jar to the generators-build branch
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p "$RUNNER_TEMP/publish"
+          cp build/libs/*.jar "$RUNNER_TEMP/publish/Generators.jar"
+          cd "$RUNNER_TEMP/publish"
+          git init -q -b generators-build
+          git add Generators.jar
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "Generators jar built from ${GITHUB_SHA}"
+          git push -f -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" generators-build
