@@ -1,0 +1,24 @@
+name: RelicPvP
+version: '${version}'
+main: dev.nuccleus.relicpvp.RelicPvP
+api-version: '1.21'
+description: Generators, starter kits, boss keys, level-locked zones and rare item spawns for a PvP map.
+authors: [nuccleusbee]
+
+commands:
+  relic:
+    description: RelicPvP admin commands.
+    usage: /relic help
+    permission: relicpvp.admin
+  stats:
+    description: Show your level, kills and deaths.
+    usage: /stats [player]
+    aliases: [level]
+
+permissions:
+  relicpvp.admin:
+    description: Use /relic admin commands.
+    default: op
+  relicpvp.bypass.zones:
+    description: Walk into level-locked zones without the level.
+    default: false

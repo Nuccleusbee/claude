@@ -1,0 +1,193 @@
+# ============================================================
+#  RelicPvP config
+#  Text uses MiniMessage: <red>, <gold>, <bold>, <gradient:red:gold>...
+#  Item references (anywhere you see "item:") can be either a vanilla
+#  material (DIAMOND, IRON_INGOT...) or an id from the "items" section.
+#  After editing, run /relic reload
+# ============================================================
+
+prefix: "<dark_gray>[<gold>Relic</gold>]</dark_gray> "
+
+# ------------------------------------------------------------
+# Custom items. Used by kits, bosses, generators and rare spawns.
+# ------------------------------------------------------------
+items:
+  starter_blade:
+    material: STONE_SWORD
+    name: "<gray>Starter Blade"
+    lore: ["<dark_gray>Everyone starts somewhere."]
+    unbreakable: true
+  blade_of_dawn:
+    material: DIAMOND_SWORD
+    name: "<gradient:gold:yellow><bold>Blade of Dawn</gradient>"
+    lore: ["<gold>Legendary", "<gray>Found only by the lucky."]
+    enchants: {sharpness: 6, fire_aspect: 2, unbreaking: 3}
+    glow: true
+  void_bow:
+    material: BOW
+    name: "<dark_purple><bold>Void Bow"
+    lore: ["<light_purple>Epic"]
+    enchants: {power: 5, punch: 2, infinity: 1}
+  phoenix_apple:
+    material: ENCHANTED_GOLDEN_APPLE
+    name: "<red>Phoenix Apple"
+    lore: ["<yellow>Rare"]
+  reaper_scythe:
+    material: NETHERITE_HOE
+    name: "<dark_red><bold>Reaper's Scythe"
+    lore: ["<red>Boss drop"]
+    enchants: {sharpness: 8, knockback: 2}
+    unbreakable: true
+    glow: true
+  warlord_axe:
+    material: NETHERITE_AXE
+    name: "<aqua><bold>Warlord's Axe"
+    lore: ["<dark_aqua>Boss drop"]
+    enchants: {sharpness: 7, efficiency: 5}
+    unbreakable: true
+
+# ------------------------------------------------------------
+# Starter kit. Format per line: "<item> [amount]"
+# Armor goes straight into the armor slots if they're empty.
+# ------------------------------------------------------------
+kit:
+  give-on-first-join: true
+  give-on-respawn: true
+  # Kit items vanish on death instead of dropping (stops kit farming).
+  remove-kit-items-on-death: true
+  items:
+    - "starter_blade"
+    - "BOW"
+    - "ARROW 32"
+    - "LEATHER_HELMET"
+    - "LEATHER_CHESTPLATE"
+    - "LEATHER_LEGGINGS"
+    - "LEATHER_BOOTS"
+    - "COOKED_BEEF 16"
+
+# ------------------------------------------------------------
+# Level keys. Bosses drop them; right-click one to unlock that level.
+# ------------------------------------------------------------
+keys:
+  material: TRIPWIRE_HOOK
+  name: "<gold><bold>Level {tier} Key"
+  lore:
+    - "<gray>Right-click to unlock <yellow>Level {tier}</yellow>."
+  # true = you must unlock levels in order (need level 2 before a level 3 key works)
+  require-previous-level: true
+  # true = key goes straight into the top damager's inventory.
+  # false = it drops on the ground (fight for it!)
+  give-to-top-damager: true
+
+# ------------------------------------------------------------
+# Generators (create them in-game with /relic gen create)
+# ------------------------------------------------------------
+generators:
+  # Only generate when a player is this close (stops item lag).
+  activation-range: 32
+  # Stop dropping when this many of the item are already lying there.
+  max-on-ground: 64
+
+# ------------------------------------------------------------
+# Bosses. Set where they live with /relic boss setspawn <id>.
+# They spawn when a player comes near and respawn after dying.
+# ------------------------------------------------------------
+boss-bar-range: 48
+bosses:
+  grave_knight:
+    name: "<red><bold>Grave Knight"
+    entity: ZOMBIE
+    health: 300
+    damage-multiplier: 1.5
+    key-tier: 1
+    respawn-seconds: 300
+    leash-radius: 30
+    exp: 200
+    bar-color: RED
+    announce-spawn: true
+    equipment:
+      helmet: IRON_HELMET
+      chestplate: IRON_CHESTPLATE
+      main-hand: IRON_SWORD
+    abilities:
+      shockwave: {every-seconds: 15, radius: 5, damage: 4}
+    drops:
+      gold: {item: GOLD_INGOT, amount: 16, chance: 1.0}
+      apple: {item: phoenix_apple, amount: 1, chance: 0.25}
+
+  ashen_reaper:
+    name: "<dark_red><bold>Ashen Reaper"
+    entity: WITHER_SKELETON
+    health: 600
+    damage-multiplier: 2.0
+    key-tier: 2
+    respawn-seconds: 600
+    leash-radius: 30
+    exp: 500
+    bar-color: PURPLE
+    announce-spawn: true
+    equipment:
+      helmet: NETHERITE_HELMET
+      main-hand: reaper_scythe
+    abilities:
+      shockwave: {every-seconds: 12, radius: 6, damage: 6}
+      minions: {every-seconds: 25, entity: WITHER_SKELETON, count: 2}
+    drops:
+      diamonds: {item: DIAMOND, amount: 8, chance: 1.0}
+      scythe: {item: reaper_scythe, amount: 1, chance: 0.1}
+
+  ironclad_warlord:
+    name: "<aqua><bold>Ironclad Warlord"
+    entity: VINDICATOR
+    health: 1000
+    damage-multiplier: 2.5
+    key-tier: 3
+    respawn-seconds: 900
+    leash-radius: 35
+    exp: 1000
+    bar-color: BLUE
+    announce-spawn: true
+    equipment:
+      helmet: NETHERITE_HELMET
+      chestplate: NETHERITE_CHESTPLATE
+      main-hand: warlord_axe
+    abilities:
+      shockwave: {every-seconds: 10, radius: 7, damage: 8}
+      minions: {every-seconds: 20, entity: VINDICATOR, count: 3}
+    drops:
+      netherite: {item: NETHERITE_INGOT, amount: 2, chance: 1.0}
+      axe: {item: warlord_axe, amount: 1, chance: 0.1}
+
+# ------------------------------------------------------------
+# Rare item spawns. Add spawn points around the map with
+# /relic rare addpoint. Every interval a random point gets a
+# glowing rare item and the whole server is told.
+# ------------------------------------------------------------
+rare-spawns:
+  interval-seconds: 300
+  despawn-seconds: 180
+  max-active: 3
+  min-players-online: 1
+  # How much of the location to reveal: zone, coords, both, none
+  reveal: zone
+  table:
+    dawn:
+      item: blade_of_dawn
+      amount: 1
+      weight: 5
+      announce: "<gold><bold>LEGENDARY!</bold></gold> <yellow>A Blade of Dawn has appeared"
+    void_bow:
+      item: void_bow
+      amount: 1
+      weight: 15
+      announce: "<light_purple><bold>EPIC!</bold></light_purple> <yellow>A Void Bow has appeared"
+    apple:
+      item: phoenix_apple
+      amount: 1
+      weight: 30
+      announce: "<red>A Phoenix Apple has appeared"
+    diamonds:
+      item: DIAMOND
+      amount: 5
+      weight: 50
+      announce: "<aqua>A stash of diamonds has appeared"
